@@ -1,0 +1,14 @@
+# Known checkpatch findings that stay, one per line: "<path>: <exact message>".
+# Keep a comment above each entry saying why.
+
+# The TypeInfo is filled in at run time with a name built per CPU model, the same
+# pattern as target/arm/cpu.c's arm_cpu_register().
+target/csky/cpu.c: ERROR: initializer for struct TypeInfo should normally be const
+
+# A named constant for an upstream boot option this port does not support; it keeps the
+# old call sites readable.
+hw/csky/boot.c: ERROR: do not initialise statics to 0 or NULL
+
+# Advisory note on every LGPL file. These files are derived from LGPL upstream code (or extend
+# it) and keep its terms; see LICENSE.md.
+*: WARNING: Saw acceptable license 'LGPL-2.1-or-later ' but note 'GPL-2.0-or-later' is preferred for new files unless the code is derived from a source file with an existing declared license that must be retained. Please explain the license choice in the commit message.

@@ -1,0 +1,105 @@
+diff --git a/hw/Kconfig b/hw/Kconfig
+index c92ca2b..298f7b2 100644
+--- a/hw/Kconfig
++++ b/hw/Kconfig
+@@ -53,6 +53,7 @@ source arm/Kconfig
+ source cpu/Kconfig
+ source alpha/Kconfig
+ source avr/Kconfig
++source csky/Kconfig
+ source hexagon/Kconfig
+ source hppa/Kconfig
+ source i386/Kconfig
+diff --git a/hw/char/Kconfig b/hw/char/Kconfig
+index 020c0a8..4b4b35c 100644
+--- a/hw/char/Kconfig
++++ b/hw/char/Kconfig
+@@ -95,3 +95,6 @@ config IP_OCTAL_232
+     bool
+     default y
+     depends on IPACK
++
++config CSKY_UART
++    bool
+diff --git a/hw/char/meson.build b/hw/char/meson.build
+index fc3d7ee..1e16196 100644
+--- a/hw/char/meson.build
++++ b/hw/char/meson.build
+@@ -41,3 +41,4 @@ system_ss.add(when: 'CONFIG_GOLDFISH_TTY', if_true: files('goldfish_tty.c'))
+ 
+ specific_ss.add(when: 'CONFIG_TERMINAL3270', if_true: files('terminal3270.c'))
+ specific_ss.add(when: 'CONFIG_PSERIES', if_true: files('spapr_vty.c'))
++system_ss.add(when: 'CONFIG_CSKY_UART', if_true: files('csky_uart.c'))
+diff --git a/hw/intc/Kconfig b/hw/intc/Kconfig
+index 05e6979..1df1b54 100644
+--- a/hw/intc/Kconfig
++++ b/hw/intc/Kconfig
+@@ -120,3 +120,7 @@ config LOONGARCH_EXTIOI
+ 
+ config LOONGARCH_DINTC
+     bool
++
++config CSKY_TCIP_V1
++    bool
++    select PTIMER
+diff --git a/hw/intc/meson.build b/hw/intc/meson.build
+index 0620b07..ebdaed0 100644
+--- a/hw/intc/meson.build
++++ b/hw/intc/meson.build
+@@ -92,3 +92,7 @@ specific_ss.add(when: ['CONFIG_KVM', 'CONFIG_LOONGARCH_EXTIOI'],
+ specific_ss.add(when: 'CONFIG_LOONGARCH_DINTC', if_true: files('loongarch_dintc.c'))
+ specific_ss.add(when: ['CONFIG_KVM', 'CONFIG_LOONGARCH_DINTC'],
+                if_true: files('loongarch_dintc_kvm.c'))
++
++# csky_tcip_v1.c uses the C-SKY CPU state (target/csky/cpu.h), so it is
++# built per target (specific_ss) rather than in system_ss.
++specific_ss.add(when: 'CONFIG_CSKY_TCIP_V1', if_true: files('csky_tcip_v1.c'))
+diff --git a/hw/meson.build b/hw/meson.build
+index 7fa81db..59fcfbf 100644
+--- a/hw/meson.build
++++ b/hw/meson.build
+@@ -2,6 +2,7 @@
+ subdir('alpha')
+ subdir('arm')
+ subdir('avr')
++subdir('csky')
+ subdir('hppa')
+ subdir('hexagon')
+ subdir('xenpv') # i386 uses it
+diff --git a/qapi/machine.json b/qapi/machine.json
+index 9b145c6..7c4940f 100644
+--- a/qapi/machine.json
++++ b/qapi/machine.json
+@@ -36,7 +36,7 @@
+ # Since: 3.0
+ ##
+ { 'enum' : 'SysEmuTarget',
+-  'data' : [ 'aarch64', 'alpha', 'arm', 'avr', 'hexagon', 'hppa', 'i386',
++  'data' : [ 'aarch64', 'alpha', 'arm', 'avr', 'csky', 'hexagon', 'hppa', 'i386',
+              'loongarch64', 'm68k', 'microblaze', 'mips', 'mips64',
+              'mips64el', 'mipsel', 'or1k', 'ppc',
+              'ppc64', 'riscv32', 'riscv64', 'rx', 's390x', 'sh4',
+diff --git a/target/Kconfig b/target/Kconfig
+index 0288a3f..27becd3 100644
+--- a/target/Kconfig
++++ b/target/Kconfig
+@@ -1,6 +1,7 @@
+ source alpha/Kconfig
+ source arm/Kconfig
+ source avr/Kconfig
++source csky/Kconfig
+ source hppa/Kconfig
+ source i386/Kconfig
+ source loongarch/Kconfig
+diff --git a/target/meson.build b/target/meson.build
+index d891ef9..997a60a 100644
+--- a/target/meson.build
++++ b/target/meson.build
+@@ -1,6 +1,7 @@
+ subdir('alpha')
+ subdir('arm')
+ subdir('avr')
++subdir('csky')
+ subdir('hexagon')
+ subdir('hppa')
+ subdir('i386')

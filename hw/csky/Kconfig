@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+config SMARTL
+    bool
+    default y
+    depends on CSKY
+    select CSKY_TCIP_V1
+    select CSKY_UART
+    select DEVICE_TREE

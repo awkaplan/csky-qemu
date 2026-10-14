@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# Install the overlay into QEMU at the commit in QEMU_COMMIT, build it with QEMU's default
+# warnings-as-errors, run the smartl smoke test and QEMU's style checker.
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: csky-qemu
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              build-essential ninja-build pkg-config python3-venv perl \
+              libglib2.0-dev libpixman-1-dev libfdt-dev flex bison
+
+      - name: Fetch QEMU at the tested commit
+        run: |
+          commit="$(cat csky-qemu/QEMU_COMMIT)"
+          git init -q qemu
+          git -C qemu fetch -q --depth 1 https://gitlab.com/qemu-project/qemu.git "$commit"
+          git -C qemu checkout -q FETCH_HEAD
+
+      - name: Install the overlay
+        run: csky-qemu/install.sh qemu
+
+      - name: Configure and build
+        run: |
+          cd qemu
+          ./configure --target-list=cskyv2-softmmu --disable-docs
+          ninja -C build qemu-system-cskyv2
+
+      - name: Smoke test
+        run: csky-qemu/tests/run-smoke.sh qemu/build/qemu-system-cskyv2
+
+      - name: checkpatch
+        run: csky-qemu/tests/checkpatch.sh qemu
