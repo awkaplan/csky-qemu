@@ -999,9 +999,210 @@ static void csky_cpu_initfn(Object *obj)
      */
 }
 
+/*
+ * Migration state. Port note: the stub this replaces marked the CPU
+ * unmigratable. The state saved is everything in CPUCSKYState that precedes
+ * "features", which csky_cpu_reset() clears, plus the exclusive-access pair
+ * and tls_value. The fields from "features" on are set by the CPU model's
+ * instance_init, by the board, or by the gdb stub, and are not guest state.
+ *
+ * Both the split PSR bits (psr_c, psr_s, ...) and cp0.psr are saved, as
+ * translated code keeps them in separate env fields and writes cp0.psr back
+ * only when something reads it. Restoring both exactly restores that
+ * relationship, so no field needs to be derived afterwards. The translated
+ * code cache and the TLB are not state: post_load needs nothing, and the
+ * common CPU post_load flushes the TLB.
+ *
+ * tlb_context is not saved: it holds the MMU's TLB entries and function
+ * pointers set by csky_nommu_init(), and the CK803 has no MMU (the entries
+ * stay zero).
+ */
+static const VMStateDescription vmstate_csky_mmu = {
+    .name = "cpu/mmu",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32(mir, struct CSKYMMU),
+        VMSTATE_UINT32(mrr, struct CSKYMMU),
+        VMSTATE_UINT32(mel0, struct CSKYMMU),
+        VMSTATE_UINT32(mel1, struct CSKYMMU),
+        VMSTATE_UINT32(meh, struct CSKYMMU),
+        VMSTATE_UINT32(mcr, struct CSKYMMU),
+        VMSTATE_UINT32(mpr, struct CSKYMMU),
+        VMSTATE_UINT32(mwr, struct CSKYMMU),
+        VMSTATE_UINT32(mcir, struct CSKYMMU),
+        VMSTATE_UINT32(cr9, struct CSKYMMU),
+        VMSTATE_UINT32(cr10, struct CSKYMMU),
+        VMSTATE_UINT32(cr11, struct CSKYMMU),
+        VMSTATE_UINT32(cr12, struct CSKYMMU),
+        VMSTATE_UINT32(cr13, struct CSKYMMU),
+        VMSTATE_UINT32(cr14, struct CSKYMMU),
+        VMSTATE_UINT32(cr15, struct CSKYMMU),
+        VMSTATE_UINT32(cr16, struct CSKYMMU),
+        VMSTATE_UINT32(mpgd0, struct CSKYMMU),
+        VMSTATE_UINT32(mpgd1, struct CSKYMMU),
+        VMSTATE_UINT32(msa0, struct CSKYMMU),
+        VMSTATE_UINT32(msa1, struct CSKYMMU),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_csky_env = {
+    .name = "cpu/env",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, CPUCSKYState, 32),
+        VMSTATE_UINT32(pc, CPUCSKYState),
+        VMSTATE_UINT32(psr_c, CPUCSKYState),
+        VMSTATE_UINT32(psr_s, CPUCSKYState),
+        VMSTATE_UINT32(psr_t, CPUCSKYState),
+        VMSTATE_UINT32(psr_bm, CPUCSKYState),
+        VMSTATE_UINT32(psr_tm, CPUCSKYState),
+        VMSTATE_UINT32(dcsr_v, CPUCSKYState),
+        VMSTATE_UINT32(hi, CPUCSKYState),
+        VMSTATE_UINT32(lo, CPUCSKYState),
+        VMSTATE_UINT32(hi_guard, CPUCSKYState),
+        VMSTATE_UINT32(lo_guard, CPUCSKYState),
+        VMSTATE_UINT32_ARRAY(banked_regs, CPUCSKYState, 16),
+        VMSTATE_UINT32(idly4_counter, CPUCSKYState),
+        VMSTATE_UINT32(sce_condexec_bits, CPUCSKYState),
+        VMSTATE_UINT32(sce_condexec_bits_bk, CPUCSKYState),
+        VMSTATE_UINT32(intc_signals.avec_b, CPUCSKYState),
+        VMSTATE_UINT32(intc_signals.fint_b, CPUCSKYState),
+        VMSTATE_UINT32(intc_signals.int_b, CPUCSKYState),
+        VMSTATE_UINT32(intc_signals.vec_b, CPUCSKYState),
+        VMSTATE_UINT32(intc_signals.iabr, CPUCSKYState),
+        VMSTATE_UINT32(intc_signals.isr, CPUCSKYState),
+        VMSTATE_UINT32(intc_signals.iptr, CPUCSKYState),
+        VMSTATE_UINT32(intc_signals.issr, CPUCSKYState),
+        VMSTATE_UINT32(cp0.psr, CPUCSKYState),
+        VMSTATE_UINT32(cp0.vbr, CPUCSKYState),
+        VMSTATE_UINT32(cp0.epsr, CPUCSKYState),
+        VMSTATE_UINT32(cp0.fpsr, CPUCSKYState),
+        VMSTATE_UINT32(cp0.epc, CPUCSKYState),
+        VMSTATE_UINT32(cp0.fpc, CPUCSKYState),
+        VMSTATE_UINT32(cp0.ss0, CPUCSKYState),
+        VMSTATE_UINT32(cp0.ss1, CPUCSKYState),
+        VMSTATE_UINT32(cp0.ss2, CPUCSKYState),
+        VMSTATE_UINT32(cp0.ss3, CPUCSKYState),
+        VMSTATE_UINT32(cp0.ss4, CPUCSKYState),
+        VMSTATE_UINT32(cp0.gcr, CPUCSKYState),
+        VMSTATE_UINT32(cp0.gsr, CPUCSKYState),
+        VMSTATE_UINT32_ARRAY(cp0.cpidr, CPUCSKYState, 8),
+        VMSTATE_UINT32(cp0.cpidr_counter, CPUCSKYState),
+        VMSTATE_UINT32(cp0.dcsr, CPUCSKYState),
+        VMSTATE_UINT32(cp0.cpwr, CPUCSKYState),
+        VMSTATE_UINT32(cp0.dummy, CPUCSKYState),
+        VMSTATE_UINT32(cp0.cfr, CPUCSKYState),
+        VMSTATE_UINT32(cp0.ccr, CPUCSKYState),
+        VMSTATE_UINT32(cp0.capr, CPUCSKYState),
+        VMSTATE_UINT32(cp0.prsr, CPUCSKYState),
+        VMSTATE_UINT32(cp0.mpid, CPUCSKYState),
+        VMSTATE_UINT32(cp0.chr, CPUCSKYState),
+        VMSTATE_UINT32_ARRAY(cp0.pacr, CPUCSKYState, 8),
+        VMSTATE_UINT32(stackpoint.nt_usp, CPUCSKYState),
+        VMSTATE_UINT32(stackpoint.nt_ssp, CPUCSKYState),
+        VMSTATE_UINT32(stackpoint.nt_asp, CPUCSKYState),
+        VMSTATE_UINT32(stackpoint.nt_int_sp, CPUCSKYState),
+        VMSTATE_UINT32(stackpoint.t_usp, CPUCSKYState),
+        VMSTATE_UINT32(stackpoint.t_ssp, CPUCSKYState),
+        VMSTATE_UINT32(stackpoint.t_asp, CPUCSKYState),
+        VMSTATE_UINT32(stackpoint.t_int_sp, CPUCSKYState),
+        VMSTATE_UINT32(tee.t_psr, CPUCSKYState),
+        VMSTATE_UINT32(tee.nt_psr, CPUCSKYState),
+        VMSTATE_UINT32(tee.t_vbr, CPUCSKYState),
+        VMSTATE_UINT32(tee.nt_vbr, CPUCSKYState),
+        VMSTATE_UINT32(tee.t_epsr, CPUCSKYState),
+        VMSTATE_UINT32(tee.nt_epsr, CPUCSKYState),
+        VMSTATE_UINT32(tee.t_epc, CPUCSKYState),
+        VMSTATE_UINT32(tee.nt_epc, CPUCSKYState),
+        VMSTATE_UINT32(tee.t_dcr, CPUCSKYState),
+        VMSTATE_UINT32(tee.t_pcr, CPUCSKYState),
+        VMSTATE_UINT32(tee.t_ebr, CPUCSKYState),
+        VMSTATE_UINT32(tee.nt_ebr, CPUCSKYState),
+        VMSTATE_UINT32(cp14.tcr, CPUCSKYState),
+        VMSTATE_UINT32(cp14.ter, CPUCSKYState),
+        VMSTATE_UINT32(cp14.tsr, CPUCSKYState),
+        VMSTATE_UINT32(cp14.cyc, CPUCSKYState),
+        VMSTATE_UINT32(cp14.sync, CPUCSKYState),
+        VMSTATE_UINT32(cp14.hw_trgr, CPUCSKYState),
+        VMSTATE_UINT32(cp14.asid, CPUCSKYState),
+        VMSTATE_UINT32(cp14.channel, CPUCSKYState),
+        VMSTATE_UINT32(cp14.data, CPUCSKYState),
+        VMSTATE_UINT32(cp14.status, CPUCSKYState),
+        VMSTATE_UINT32_ARRAY(cp14.addr_cmpr_config, CPUCSKYState, 2),
+        VMSTATE_UINT32_ARRAY(cp14.addr_cmpr, CPUCSKYState, 2),
+        VMSTATE_UINT32_ARRAY(cp14.data_cmpr_config, CPUCSKYState, 2),
+        VMSTATE_UINT32_ARRAY(cp14.data_cmpr, CPUCSKYState, 2),
+        VMSTATE_UINT32(mptimer.ctlr, CPUCSKYState),
+        VMSTATE_UINT32(mptimer.isr, CPUCSKYState),
+        VMSTATE_UINT32(mptimer.ccvr_hi, CPUCSKYState),
+        VMSTATE_UINT32(mptimer.ccvr_lo, CPUCSKYState),
+        VMSTATE_UINT32(mptimer.cmvr_hi, CPUCSKYState),
+        VMSTATE_UINT32(mptimer.cmvr_lo, CPUCSKYState),
+        VMSTATE_UINT32(mptimer.lvr, CPUCSKYState),
+        VMSTATE_UINT32(intc_bar, CPUCSKYState),
+        VMSTATE_UINT32(excl_val, CPUCSKYState),
+        VMSTATE_UINT32(excl_addr, CPUCSKYState),
+        VMSTATE_UINT32(tls_value, CPUCSKYState),
+        VMSTATE_BOOL(in_reset, CPUCSKYState),
+        VMSTATE_STRUCT(mmu, CPUCSKYState, 1, vmstate_csky_mmu, struct CSKYMMU),
+        VMSTATE_STRUCT(nt_mmu, CPUCSKYState, 1, vmstate_csky_mmu,
+                       struct CSKYMMU),
+        VMSTATE_STRUCT(t_mmu, CPUCSKYState, 1, vmstate_csky_mmu,
+                       struct CSKYMMU),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+/*
+ * CPUs with an FPU or a vector unit have more state (the FPU and vector
+ * registers and their float_status) that is not saved. Refuse to save such a
+ * CPU rather than save a partial state. The DM-32UV's CK803 has none of these.
+ */
+#define CSKY_UNSAVED_FEATURES \
+    (ABIV1_FPU | ABIV2_FPU | ABIV2_FPU_SINGLE | ABIV2_FPU3 | \
+     ABIV2_VDSP64 | ABIV2_VDSP128 | ABIV2_VDSP2)
+
+static bool csky_cpu_unsaved_needed(void *opaque)
+{
+    CSKYCPU *cpu = opaque;
+
+    return (cpu->env.features & CSKY_UNSAVED_FEATURES) != 0;
+}
+
+static int csky_cpu_unsaved_pre_save(void *opaque)
+{
+    error_report("csky: saving the state of a CPU with an FPU or vector "
+                 "unit is not supported");
+    return -EINVAL;
+}
+
+static const VMStateDescription vmstate_csky_cpu_unsaved = {
+    .name = "cpu/fpu_unsupported",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = csky_cpu_unsaved_needed,
+    .pre_save = csky_cpu_unsaved_pre_save,
+    .fields = (const VMStateField[]) {
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static const VMStateDescription vmstate_csky_cpu = {
     .name = "cpu",
-    .unmigratable = 1,
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_STRUCT(parent_obj, CSKYCPU, 0, vmstate_cpu_common, CPUState),
+        VMSTATE_STRUCT(env, CSKYCPU, 1, vmstate_csky_env, CPUCSKYState),
+        VMSTATE_END_OF_LIST()
+    },
+    .subsections = (const VMStateDescription * const []) {
+        &vmstate_csky_cpu_unsaved,
+        NULL
+    }
 };
 
 /* Port note: returns a string literal, as current QEMU requires. */
